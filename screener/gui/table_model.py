@@ -6,21 +6,11 @@ import math
 import numpy as np
 import pandas as pd
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
-from PySide6.QtGui import QBrush, QColor, QFont
+from PySide6.QtGui import QBrush, QFont
 
 from .columns import Col
 
-GREEN = QColor("#1b8a3a")
-RED = QColor("#c62828")
-MUTED = QColor("#7a8794")
-RATING_COLORS = {
-    "Strong Buy": ("#0f7a34", "#ffffff"),
-    "Buy": ("#b9e6c6", "#0b4d22"),
-    "Neutral": ("#eceff3", "#44505c"),
-    "Avoid": ("#f8d4d4", "#8a1c1c"),
-    "Avoid (Bearish)": ("#e57373", "#ffffff"),
-    "Low Data": ("#f4f4f4", "#9aa4ad"),
-}
+from . import themes
 
 
 def _isnan(v) -> bool:
@@ -121,30 +111,32 @@ class DataFrameModel(QAbstractTableModel):
                 return int(Qt.AlignLeft | Qt.AlignVCenter)
             return int(Qt.AlignCenter)
         if role == Qt.ForegroundRole:
+            qc = themes.qc
+            up, down, muted, strong = qc("up"), qc("down"), qc("muted"), qc("strong_text")
             if c.kind == "watch":
-                return QBrush(QColor("#e0a800")) if v else QBrush(MUTED)
+                return QBrush(qc("star")) if v else QBrush(muted)
             if _isnan(v):
-                return QBrush(MUTED)
+                return QBrush(muted)
             if c.kind == "pct" and isinstance(v, (int, float, np.floating)):
-                return QBrush(GREEN if v > 0 else RED if v < 0 else MUTED)
+                return QBrush(up if v > 0 else down if v < 0 else muted)
             if c.key in ("win_rate", "wilson_lb", "beat_bench", "last4", "prior_win"):
-                return QBrush(GREEN if v >= 0.6 else RED if v < 0.45 else QColor("#333"))
+                return QBrush(up if v >= 0.6 else down if v < 0.45 else strong)
             if c.kind == "rating":
-                return QBrush(QColor(RATING_COLORS.get(v, ("#fff", "#333"))[1]))
+                return QBrush(themes.rating_colors(v)[1])
             if c.key == "q_value":
-                return QBrush(GREEN if v < 0.1 else QColor("#333") if v < 0.5 else MUTED)
+                return QBrush(up if v < 0.1 else strong if v < 0.5 else muted)
             if c.key == "days_to_entry" and v is not None:
-                return QBrush(GREEN if 0 <= v <= 2 else MUTED if v < 0 else QColor("#333"))
+                return QBrush(up if 0 <= v <= 2 else muted if v < 0 else strong)
         if role == Qt.BackgroundRole:
             if c.kind == "rating" and not _isnan(v):
-                return QBrush(QColor(RATING_COLORS.get(v, ("#fff", "#333"))[0]))
+                return QBrush(themes.rating_colors(v)[0])
             if c.kind == "score" and not _isnan(v):
-                x = max(0.0, min(1.0, (float(v) - 50) / 40))
-                y = max(0.0, min(1.0, (50 - float(v)) / 40))
+                t = themes.current()
+                x = (float(v) - 50) / 40
                 if x > 0:
-                    return QBrush(QColor(int(255 - 80 * x), int(255 - 25 * x), int(255 - 80 * x)))
-                if y > 0:
-                    return QBrush(QColor(255, int(255 - 70 * y), int(255 - 70 * y)))
+                    return QBrush(themes.blend(t["surface"], t["score_pos"], x))
+                if x < 0:
+                    return QBrush(themes.blend(t["surface"], t["score_neg"], -x))
         if role == Qt.FontRole and c.kind in ("rating", "score") or (role == Qt.FontRole and c.key == "ticker"):
             return self._bold
         if role == Qt.ToolTipRole:
@@ -155,6 +147,12 @@ class DataFrameModel(QAbstractTableModel):
         if role == Qt.UserRole:
             return v
         return None
+
+    def repaint_all(self) -> None:
+        """Re-emit all cells (used after a theme change)."""
+        if self.rowCount() and self.columnCount():
+            self.dataChanged.emit(self.index(0, 0), self.index(self.rowCount() - 1, self.columnCount() - 1))
+        self.headerDataChanged.emit(Qt.Horizontal, 0, max(0, self.columnCount() - 1))
 
     # ---------------------------------------------------------------- sort
     def sort(self, column: int, order=Qt.AscendingOrder) -> None:

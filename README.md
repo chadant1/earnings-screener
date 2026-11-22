@@ -68,6 +68,7 @@ Pick timeframes and rules (minimum score, minimum prior events, lookback, long o
 - **Custom Timeframes…**: build your own buy and sell rules.
 - **Settings…**: years of history (default 10), minimum events for a rating, round-trip trading cost (default 10 bps), opportunity horizon, refresh age, parallel downloads, benchmark, **option data** (option volume and implied earnings move, slower), and an optional **Alpha Vantage** key.
 - **Export…**: saves the current table to Excel or CSV.
+- **Theme**: **System** (follows your Windows light/dark setting, including when it changes), **Light**, **Dark**, **Midnight** (dark navy, trading-terminal style) or **Classic** (green headers like traditional screeners). The switch is instant, recolors tables, charts, dialogs and the Windows title bar, and is remembered. **Ctrl+Shift+T** cycles through themes.
 
 ---
 

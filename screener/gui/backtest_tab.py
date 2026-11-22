@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (QComboBox, QDateEdit, QDoubleSpinBox, QFormLayout
                                QTabWidget, QVBoxLayout, QWidget)
 
 from ..backtest import BacktestParams, equity_curve
+from . import themes
 from .charts import Chart
 from .columns import TRADE_COLS, Col
 from .detail_tab import make_table
@@ -61,7 +62,7 @@ class BacktestTab(QWidget):
         expl = QLabel("Each past report is re-scored using only reports that had already closed before entry. "
                       "If the 'Selected' line beats 'Every event', the rating adds value beyond the raw pattern.")
         expl.setWordWrap(True)
-        expl.setStyleSheet("color:#6b7884;font-size:9pt")
+        expl.setObjectName("Muted")
         f.addRow(expl)
         h.addWidget(ctl)
 
@@ -127,18 +128,20 @@ class BacktestTab(QWidget):
     def show_results(self, bt: dict):
         self.run_btn.setEnabled(True)
         self.run_btn.setText("Run Backtest")
+        self._last_bt = bt
+        t = themes.current()
         s, a = bt["summary_selected"], bt["summary_all"]
         rows = "".join(
             f"<tr><td>{lbl}</td><td align='right'><b>{fmt_value(s.get(k), kind)}</b></td>"
-            f"<td align='right' style='color:#6b7884'>{fmt_value(a.get(k), kind)}</td></tr>"
+            f"<td align='right' style='color:{t['muted']}'>{fmt_value(a.get(k), kind)}</td></tr>"
             for k, lbl, kind in SUMMARY_ROWS)
         verdict = ""
         if s.get("trades", 0) >= 20 and a.get("trades", 0):
             better = s["avg"] > a["avg"] and s["win_rate"] > a["win_rate"]
-            verdict = ("<p style='color:#1b8a3a'><b>Rules beat the unfiltered pattern out-of-sample.</b></p>" if better
-                       else "<p style='color:#c62828'><b>Rules did NOT beat the unfiltered pattern – treat ratings with caution.</b></p>")
+            verdict = (f"<p style='color:{t['up']}'><b>Rules beat the unfiltered pattern out-of-sample.</b></p>" if better
+                       else f"<p style='color:{t['down']}'><b>Rules did NOT beat the unfiltered pattern – treat ratings with caution.</b></p>")
         elif s.get("trades", 0) < 20:
-            verdict = "<p style='color:#a06a00'><b>Fewer than 20 trades – too few to judge.</b></p>"
+            verdict = f"<p style='color:{t['warn']}'><b>Fewer than 20 trades – too few to judge.</b></p>"
         self.summary.setText(
             "<table cellspacing='4'><tr><th align='left'></th><th align='right'>Selected</th>"
             f"<th align='right'>Every event</th></tr>{rows}</table>{verdict}")
@@ -150,6 +153,14 @@ class BacktestTab(QWidget):
         self.trade_model.set_df(tr.sort_values("entry_date", ascending=False) if len(tr) else tr)
         self.trade_table.resizeColumnsToContents()
         self.year_model.set_df(bt["by_year"])
+
+    def refresh_theme(self):
+        for ch in (self.eq_chart, self.bucket_chart):
+            ch.redraw()
+        if getattr(self, "_last_bt", None) is not None:
+            self.show_results(self._last_bt)
+        self.trade_model.repaint_all()
+        self.year_model.repaint_all()
 
     def show_error(self):
         self.run_btn.setEnabled(True)

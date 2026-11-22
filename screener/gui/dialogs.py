@@ -41,7 +41,7 @@ class SettingsDialog(QDialog):
         self.av.setPlaceholderText("optional – free key from alphavantage.co")
         f.addRow("Alpha Vantage API key:", self.av)
         note = QLabel("Alpha Vantage is only used as a fallback when Yahoo has no earnings dates for a ticker.")
-        note.setWordWrap(True); note.setStyleSheet("color:#6b7884")
+        note.setWordWrap(True); note.setObjectName("Muted")
         f.addRow("", note)
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         bb.accepted.connect(self.accept); bb.rejected.connect(self.reject)
@@ -74,7 +74,7 @@ class UniverseDialog(QDialog):
         self.grp = QButtonGroup(self)
         self.r_def = QRadioButton(f"Built-in list of {len(DEFAULT_TICKERS)} liquid, optionable US stocks")
         n_sp = len(settings.data.get("sp500_cache", []))
-        self.r_sp = QRadioButton("S&P 500" + (f" ({n_sp} stocks cached)" if n_sp else " (downloads the list from Wikipedia)"))
+        self.r_sp = QRadioButton("S&&P 500" + (f" ({n_sp} stocks cached)" if n_sp else " (downloads the list from Wikipedia)"))
         self.r_cu = QRadioButton("My custom list (below)")
         for i, r in enumerate((self.r_def, self.r_sp, self.r_cu)):
             self.grp.addButton(r, i)

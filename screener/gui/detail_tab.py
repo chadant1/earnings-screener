@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QHBoxLayout, QHeade
                                QSplitter, QTableView, QTabWidget, QVBoxLayout, QWidget)
 
 from ..engine import average_path, event_table
+from . import themes
 from .charts import Chart
 from .columns import C, DETAIL_COLS, EVENT_COLS
 from .table_model import DataFrameModel, fmt_value
@@ -103,12 +104,13 @@ class DetailTab(QWidget):
         self.picker.setCurrentText(ticker)
         res = self.results[ticker]
         c = res["common"]
+        muted = themes.current()["muted"]
         nxt = fmt_value(c.get("next_earnings"), "date")
         timing = {"BMO": "before open", "AMC": "after close"}.get(c.get("next_timing"), "time unknown")
         conf = "" if c.get("confirmed") is None else (" · confirmed" if c.get("confirmed") else " · estimated")
         self.header.setText(
             f"<span style='font-size:15pt;font-weight:600'>{ticker}</span>&nbsp;&nbsp;{c.get('name', '')}"
-            f"&nbsp;&nbsp;<span style='color:#6b7884'>{c.get('sector', '')} · Mkt cap {fmt_value(c.get('market_cap'), 'cap')}"
+            f"&nbsp;&nbsp;<span style='color:{muted}'>{c.get('sector', '')} · Mkt cap {fmt_value(c.get('market_cap'), 'cap')}"
             f" · Last {fmt_value(c.get('last_price'), 'num')}</span><br>"
             f"Next earnings: <b>{nxt}</b> ({timing}{conf}) · {c.get('events_total', 0)} past reports analyzed · "
             f"Avg earnings-day move {fmt_value(c.get('hist_move'), 'pctp')}"
@@ -137,6 +139,18 @@ class DetailTab(QWidget):
         wr = self.results[self.ticker]["window_returns"].get(r["window_key"])
         self.bar_chart.event_bars(wr, f"{self.ticker} · {r['window']}: return at each report")
         self.charts.setCurrentIndex(0)
+
+    def refresh_theme(self):
+        for ch in (self.bar_chart, self.path_chart, self.price_chart):
+            ch.redraw()
+        if self.ticker:  # rebuild the rich-text header with the new colours
+            cur = self.win_table.currentIndex()
+            key = self.win_model.row(cur.row())["window_key"] if cur.isValid() else None
+            tab = self.charts.currentIndex()
+            self.show_ticker(self.ticker, key)
+            self.charts.setCurrentIndex(tab)
+        self.win_model.repaint_all()
+        self.ev_model.repaint_all()
 
     def _toggle_watch(self):
         if self.ticker:

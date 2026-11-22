@@ -40,6 +40,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "max_workers": 4,
     "cost_bps": 10,               # round-trip trading cost assumed in scores & backtests
     "hidden_columns": [],
+    "theme": "System",            # System | Light | Dark | Midnight | Classic
 }
 
 

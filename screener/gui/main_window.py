@@ -19,7 +19,7 @@ from .columns import C, OPPORTUNITY_COLS, SCREENER_COLS
 from .detail_tab import DetailTab, make_table
 from .dialogs import CustomWindowsDialog, SettingsDialog, UniverseDialog, resolve_universe
 from .filters import FilterPanel
-from .style import QSS
+from . import themes
 from .table_model import DataFrameModel
 
 HELP_TEXT = """
@@ -39,7 +39,7 @@ trading-cost setting. <b>Strong Buy</b> ≥ 75, <b>Buy</b> ≥ 62, <b>Neutral</b
 <b>Avoid (Bearish)</b> means the short side scores ≥ 62. Fewer events than your minimum shows <b>Low Data</b>.</p>
 <p><b>Opportunities</b> lists Buy-rated setups whose entry date for the next report falls inside your horizon.
 <b>Backtest</b> re-scores history with no look-ahead to check whether ratings actually predicted results.</p>
-<p style='color:#a33'><b>Not financial advice.</b> Historical patterns can and do stop working. Always confirm earnings
+<p style='color:$DOWN'><b>Not financial advice.</b> Historical patterns can and do stop working. Always confirm earnings
 dates, and size positions for the worst case.</p>
 """
 
@@ -53,6 +53,8 @@ class MainWindow(QMainWindow):
         self.results: dict = {}
         self.screen = pd.DataFrame()
         self.windows = all_windows(self.settings["custom_windows"])
+        self._theme_busy = False
+        themes.apply(QApplication.instance(), self.settings["theme"])
         self._thread = None
         self._worker = None
         self._last_errors: dict = {}
@@ -88,6 +90,24 @@ class MainWindow(QMainWindow):
         tb.addSeparator()
         act("Export…", self._export, "Export the current table to CSV or Excel")
         act("Help", self._help)
+        tb.addSeparator()
+        tb.addWidget(QLabel(" Theme "))
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(themes.CHOICES)
+        self.theme_combo.setCurrentText(self.settings["theme"] if self.settings["theme"] in themes.CHOICES else "System")
+        self.theme_combo.setToolTip("Colour theme. 'System' follows your Windows light/dark setting. "
+                                    "Shortcut: Ctrl+Shift+T cycles themes.")
+        self.theme_combo.currentTextChanged.connect(self._set_theme)
+        tb.addWidget(self.theme_combo)
+        cycle = QAction("Cycle theme", self)
+        cycle.setShortcut("Ctrl+Shift+T")
+        cycle.triggered.connect(lambda: self.theme_combo.setCurrentIndex(
+            (self.theme_combo.currentIndex() + 1) % self.theme_combo.count()))
+        self.addAction(cycle)
+        try:
+            QApplication.instance().styleHints().colorSchemeChanged.connect(self._on_system_scheme)
+        except Exception:
+            pass
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         tb.addWidget(spacer)
@@ -442,12 +462,41 @@ class MainWindow(QMainWindow):
         box = QMessageBox(self)
         box.setWindowTitle("How it works")
         box.setTextFormat(Qt.RichText)
-        text = HELP_TEXT + f"<p style='color:#888'>{APP_NAME} v{APP_VERSION} · data folder: {self.store.path}</p>"
+        t = themes.current()
+        text = HELP_TEXT.replace("$DOWN", t["down"]) + f"<p style='color:{t['muted']}'>{APP_NAME} v{APP_VERSION} · data folder: {self.store.path}</p>"
         if self._last_errors:
             items = "".join(f"<li>{t}: {e}</li>" for t, e in list(self._last_errors.items())[:30])
             text += f"<h4>Download log ({len(self._last_errors)} issues)</h4><ul>{items}</ul>"
         box.setText(text)
         box.exec()
+
+    # ---------------------------------------------------------- themes
+    def _set_theme(self, name: str):
+        self.settings["theme"] = name
+        self._apply_theme()
+
+    def _on_system_scheme(self, *_):
+        if self.settings["theme"] == "System" and not self._theme_busy:
+            self._apply_theme()
+
+    def _apply_theme(self):
+        if self._theme_busy:
+            return
+        self._theme_busy = True
+        try:
+            t = themes.apply(QApplication.instance(), self.settings["theme"])
+            themes.set_title_bar_dark(self, t.dark)
+            for m in (self.opp_model, self.scr_model):
+                m.repaint_all()
+            self.detail.refresh_theme()
+            self.backtest.refresh_theme()
+            self.status(f"Theme: {self.settings['theme']}" + (f" ({t.name})" if self.settings["theme"] == "System" else ""))
+        finally:
+            self._theme_busy = False
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        themes.set_title_bar_dark(self, themes.current().dark)
 
     def closeEvent(self, e):
         if self._worker:
@@ -472,7 +521,6 @@ def run(demo: bool = False):
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setStyle("Fusion")
-    app.setStyleSheet(QSS)
     icon = _asset("icon.png")
     if icon:
         app.setWindowIcon(QIcon(icon))
