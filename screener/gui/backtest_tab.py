@@ -112,6 +112,24 @@ class BacktestTab(QWidget):
             it.setCheckState(Qt.Checked if w.key in checked else Qt.Unchecked)
             self.windows.addItem(it)
 
+    def set_index_choices(self, names: list[str], memberships: dict):
+        self._members = memberships
+        cur = self.universe.currentText()
+        self.universe.blockSignals(True)
+        self.universe.clear()
+        self.universe.addItems(["All analyzed stocks", "Watchlist only"] + [f"{n} members" for n in names])
+        self.universe.setCurrentIndex(max(0, self.universe.findText(cur)))
+        self.universe.blockSignals(False)
+
+    def _selected_tickers(self):
+        i = self.universe.currentIndex()
+        if i <= 0:
+            return None
+        if i == 1:
+            return list(self.settings["watchlist"])
+        name = self.universe.currentText().removesuffix(" members")
+        return [t for t, names in getattr(self, "_members", {}).items() if name in names]
+
     def _emit_run(self):
         keys = [self.windows.item(i).data(Qt.UserRole) for i in range(self.windows.count())
                 if self.windows.item(i).checkState() == Qt.Checked]
@@ -120,7 +138,7 @@ class BacktestTab(QWidget):
             min_score=self.min_score.value(), min_win_rate=self.min_win.value() / 100,
             direction=1 if self.direction.currentIndex() == 0 else -1, cost_bps=self.cost.value(),
             start=pd.Timestamp(self.start.date().toPython()),
-            tickers=list(self.settings["watchlist"]) if self.universe.currentIndex() == 1 else None)
+            tickers=self._selected_tickers())
         self.run_btn.setEnabled(False)
         self.run_btn.setText("Running…")
         self.run_requested.emit(p)

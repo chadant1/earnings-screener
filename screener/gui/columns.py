@@ -18,6 +18,8 @@ C = {c.key: c for c in [
     Col("ticker", "Symbol", "text"),
     Col("name", "Company", "text"),
     Col("sector", "Sector", "text"),
+    Col("indexes", "Indexes", "text", "Index memberships (from downloaded index lists)"),
+    Col("exchange", "Exchange", "text", "Primary listing exchange", hidden=True),
     Col("market_cap", "Mkt Cap", "cap"),
     Col("avg_volume", "Avg Vol", "vol", "3-month average daily share volume"),
     Col("window", "Timeframe", "text", "Trade window relative to the earnings report"),
@@ -65,7 +67,7 @@ C = {c.key: c for c in [
     Col("plan", "Trade Plan", "plan"),
 ]}
 
-SCREENER_COLS = ["watch", "ticker", "name", "sector", "market_cap", "window", "n", "win_rate", "avg", "median",
+SCREENER_COLS = ["watch", "ticker", "name", "sector", "indexes", "exchange", "market_cap", "window", "n", "win_rate", "avg", "median",
                  "best", "worst", "abs_avg", "abs_low", "abs_high", "std", "sharpe", "wilson_lb", "base_win",
                  "win_edge", "avg_edge", "beat_bench", "avg_excess", "profit_factor", "avg_mae", "last4",
                  "last_ret", "t_stat", "p_value", "q_value", "score", "short_score", "rating", "next_earnings",
@@ -74,7 +76,7 @@ SCREENER_COLS = ["watch", "ticker", "name", "sector", "market_cap", "window", "n
 
 OPPORTUNITY_COLS = ["watch", "ticker", "name", "rating", "score", "window", "plan", "days_to_entry", "entry_date",
                     "exit_date", "next_earnings", "next_timing", "confirmed", "n", "win_rate", "wilson_lb",
-                    "base_win", "avg", "median", "worst", "avg_mae", "beat_bench", "q_value", "market_cap",
+                    "base_win", "avg", "median", "worst", "avg_mae", "beat_bench", "q_value", "market_cap", "indexes",
                     "hist_move", "implied_move"]
 
 DETAIL_COLS = ["window", "n", "win_rate", "avg", "median", "best", "worst", "std", "sharpe", "wilson_lb", "base_win",

@@ -33,7 +33,7 @@ def run_backtest(results: dict[str, dict], p: BacktestParams) -> dict:
     cost = p.cost_bps / 10000.0
     trades, universe = [], []
     for tkr, res in results.items():
-        if p.tickers and tkr not in p.tickers:
+        if p.tickers is not None and tkr not in p.tickers:
             continue
         for key in p.window_keys:
             wr = res["window_returns"].get(key)

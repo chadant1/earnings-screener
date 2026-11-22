@@ -4,9 +4,11 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
                                QHBoxLayout, QLabel, QLineEdit, QListWidget, QMessageBox, QPlainTextEdit,
-                               QPushButton, QRadioButton, QSpinBox, QVBoxLayout, QButtonGroup, QGroupBox)
+                               QPushButton, QSpinBox, QVBoxLayout, QGroupBox, QGridLayout, QApplication)
 
-from ..universe import DEFAULT_TICKERS, load_sp500, load_ticker_file, parse_ticker_text
+from ..universe import (DEFAULT_TICKERS, INDEX_BY_KEY, INDEXES, index_cache, load_ticker_file, parse_ticker_text,
+                        refresh_indexes, resolve_universe, selected_sets)  # noqa: F401
+from . import themes
 from ..windows import Window
 
 
@@ -63,26 +65,51 @@ class SettingsDialog(QDialog):
 
 
 class UniverseDialog(QDialog):
+    """Pick any combination of: built-in list, market indexes, and your own list."""
+
     def __init__(self, settings, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Stock Universe")
-        self.resize(560, 520)
+        self.resize(640, 640)
         self.s = settings
+        self.cache = index_cache(settings)
+        sets = set(selected_sets(settings))
         v = QVBoxLayout(self)
-        box = QGroupBox("Which stocks should be analyzed?")
-        bl = QVBoxLayout(box)
-        self.grp = QButtonGroup(self)
-        self.r_def = QRadioButton(f"Built-in list of {len(DEFAULT_TICKERS)} liquid, optionable US stocks")
-        n_sp = len(settings.data.get("sp500_cache", []))
-        self.r_sp = QRadioButton("S&&P 500" + (f" ({n_sp} stocks cached)" if n_sp else " (downloads the list from Wikipedia)"))
-        self.r_cu = QRadioButton("My custom list (below)")
-        for i, r in enumerate((self.r_def, self.r_sp, self.r_cu)):
-            self.grp.addButton(r, i)
-            bl.addWidget(r)
-        {"default": self.r_def, "sp500": self.r_sp, "custom": self.r_cu}.get(settings["universe"], self.r_def).setChecked(True)
+        box = QGroupBox("Stock lists to analyze (combine any)")
+        grid = QGridLayout(box)
+        grid.setColumnStretch(1, 1)
+        self.checks: dict[str, QCheckBox] = {}
+        self.status: dict[str, QLabel] = {}
+        rows = [("builtin", f"Built-in list (liquid, optionable US stocks)")] + \
+               [(i.key, i.label.replace("&", "&&")) for i in INDEXES] + [("custom", "My custom list (below)")]
+        for r, (key, label) in enumerate(rows):
+            cb = QCheckBox(label)
+            cb.setChecked(key in sets)
+            cb.toggled.connect(self._update_total)
+            lbl = QLabel()
+            lbl.setObjectName("Muted")
+            self.checks[key], self.status[key] = cb, lbl
+            grid.addWidget(cb, r, 0)
+            grid.addWidget(lbl, r, 1)
         v.addWidget(box)
+        h0 = QHBoxLayout()
+        self.refresh_btn = QPushButton("Refresh index lists now")
+        self.refresh_btn.setToolTip("Re-download all index constituent lists (they also refresh automatically every 30 days)")
+        self.refresh_btn.clicked.connect(self._refresh_all)
+        h0.addWidget(self.refresh_btn)
+        h0.addStretch(1)
+        v.addLayout(h0)
+        self.total = QLabel()
+        self.total.setWordWrap(True)
+        v.addWidget(self.total)
+        note = QLabel("Index lists also power the <b>Index</b> filter on the Screener, Opportunities and Backtest "
+                      "tabs, so you can analyze a broad universe and then narrow it to, say, Nasdaq-100 members.")
+        note.setWordWrap(True)
+        note.setObjectName("Muted")
+        v.addWidget(note)
         v.addWidget(QLabel("Custom tickers (comma, space or one per line). Your watchlist is always included."))
         self.text = QPlainTextEdit(" ".join(settings["custom_tickers"]))
+        self.text.textChanged.connect(self._update_total)
         v.addWidget(self.text, 1)
         h = QHBoxLayout()
         b1 = QPushButton("Import from file (.txt / .csv)…"); b1.clicked.connect(self._import)
@@ -93,6 +120,67 @@ class UniverseDialog(QDialog):
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         bb.accepted.connect(self.accept); bb.rejected.connect(self.reject)
         v.addWidget(bb)
+        self._errors: dict[str, str] = {}
+        self._update_status()
+
+    # ------------------------------------------------------------ status
+    def _update_status(self):
+        self.status["builtin"].setText(f"{len(DEFAULT_TICKERS)} stocks")
+        for i in INDEXES:
+            ent = self.cache.get(i.key)
+            if i.key in self._errors:
+                txt = f"⚠ download failed – {self._errors[i.key][:70]}"
+            elif ent:
+                upd = ent.get("updated", "")[:10]
+                txt = f"{len(ent['tickers']):,} stocks · {ent.get('source', '')}" + (f" · {upd}" if upd else "")
+            else:
+                txt = f"≈ {i.size:,} stocks · downloads when selected"
+            self.status[i.key].setText(txt)
+            self.status[i.key].setToolTip(self._errors.get(i.key, ""))
+        self._update_total()
+
+    def _update_total(self):
+        chosen: set[str] = set(self.s["watchlist"])
+        approx = 0
+        if self.checks["builtin"].isChecked():
+            chosen |= set(DEFAULT_TICKERS)
+        if self.checks["custom"].isChecked():
+            chosen |= set(parse_ticker_text(self.text.toPlainText()))
+        for i in INDEXES:
+            if self.checks[i.key].isChecked():
+                ent = self.cache.get(i.key)
+                if ent:
+                    chosen |= set(ent["tickers"])
+                else:
+                    approx += i.size
+        n = len(chosen) + approx
+        msg = f"<b>{'≈ ' if approx else ''}{n:,} unique stocks selected</b> (overlaps between lists are counted once)."
+        if n > 800:
+            msg += ("<br><span style='color:%s'>Large universe: the first download can take an hour or more and "
+                    "Yahoo may slow requests down. Later updates only refresh stale data.</span>"
+                    % themes.current()["warn"])
+        self.total.setText(msg)
+
+    def _download(self, keys, force):
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            for k in keys:
+                self.status[k].setText("downloading…")
+                QApplication.processEvents()
+                self._errors.pop(k, None)
+                self._errors.update(refresh_indexes(self.s, [k], force=force))
+        finally:
+            QApplication.restoreOverrideCursor()
+        self.s.save()
+        self._update_status()
+
+    def _refresh_all(self):
+        self._download([i.key for i in INDEXES], force=True)
+        if self._errors:
+            QMessageBox.warning(self, "Index lists", "Some index lists could not be downloaded:\n\n" +
+                                "\n".join(f"{INDEX_BY_KEY[k].label}: {e}" for k, e in self._errors.items()) +
+                                "\n\nPreviously downloaded lists are kept. You can also paste members into "
+                                "your custom list.")
 
     def _import(self):
         path, _ = QFileDialog.getOpenFileName(self, "Import tickers", "", "Text/CSV (*.txt *.csv);;All files (*)")
@@ -105,27 +193,20 @@ class UniverseDialog(QDialog):
     def accept(self):
         d = self.s.data
         d["custom_tickers"] = parse_ticker_text(self.text.toPlainText())
-        choice = {0: "default", 1: "sp500", 2: "custom"}[self.grp.checkedId()]
-        if choice == "sp500" and not d.get("sp500_cache"):
-            try:
-                d["sp500_cache"] = load_sp500()
-            except Exception as e:
-                QMessageBox.warning(self, "S&P 500", f"Could not download the S&P 500 list:\n{e}")
-                return
-        d["universe"] = choice
+        sets = [k for k, cb in self.checks.items() if cb.isChecked()]
+        missing = [k for k in sets if k in INDEX_BY_KEY and k not in self.cache]
+        if missing:
+            self._download(missing, force=True)
+            failed = [k for k in missing if k in self._errors]
+            if failed:
+                QMessageBox.warning(self, "Index lists", "Could not download: " +
+                                    ", ".join(INDEX_BY_KEY[k].label for k in failed) +
+                                    ".\nThey will be retried when you click Update Data.")
+        if not sets:
+            sets = ["builtin"]
+        d["universe_sets"] = sets
         self.s.save()
         super().accept()
-
-
-def resolve_universe(settings) -> list[str]:
-    u = settings["universe"]
-    if u == "sp500" and settings.data.get("sp500_cache"):
-        base = list(settings.data["sp500_cache"])
-    elif u == "custom" and settings["custom_tickers"]:
-        base = list(settings["custom_tickers"])
-    else:
-        base = list(DEFAULT_TICKERS)
-    return sorted(set(base) | set(settings["watchlist"]))
 
 
 class CustomWindowsDialog(QDialog):

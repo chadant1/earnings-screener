@@ -11,6 +11,7 @@ from ..backtest import BacktestParams, run_backtest
 from ..data_store import DataStore
 from ..engine import TickerData, analyze_ticker, build_screen
 from ..providers import fetch_ticker
+from ..universe import INDEX_BY_KEY, refresh_indexes, resolve_universe
 
 
 class _Worker(QObject):
@@ -27,7 +28,7 @@ class _Worker(QObject):
 
 
 class DownloadWorker(_Worker):
-    def __init__(self, store: DataStore, tickers: list[str], settings, force: bool = False):
+    def __init__(self, store: DataStore, tickers: list[str] | None, settings, force: bool = False):
         super().__init__()
         self.store, self.tickers, self.settings, self.force = store, tickers, settings, force
 
@@ -40,8 +41,14 @@ class DownloadWorker(_Worker):
     def run(self):
         try:
             bench = self.settings["benchmark"]
-            todo = [t for t in dict.fromkeys([bench] + self.tickers) if self._stale(t)]
             errors: dict[str, str] = {}
+            # 1) refresh index constituent lists (cheap; monthly) so universe + Index filter stay current
+            self.progress.emit(0, 0, "Updating index lists…")
+            for k, e in refresh_indexes(self.settings, max_age_days=30).items():
+                errors[f"[{INDEX_BY_KEY[k].short} list]"] = e
+            if self.tickers is None:
+                self.tickers = resolve_universe(self.settings)
+            todo = [t for t in dict.fromkeys([bench] + self.tickers) if self._stale(t)]
             total = len(todo)
             if not total:
                 self.finished.emit({"errors": {}, "downloaded": 0})

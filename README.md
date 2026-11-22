@@ -41,10 +41,10 @@ After `run.bat` has worked once, double-click **`build_exe.bat`**. It creates `d
 Buy-rated setups whose **entry date for the next report** falls within the next *N* trading sessions (default 10). Each row has a plain-English **Trade Plan**, e.g. `Buy close Mon Nov 23 → Sell close Tue Dec 01`. Options:
 - *Best timeframe per stock*: show only the strongest window for each stock.
 - *Include hold-through timeframes*: by default, only trades that exit **before** the report are listed.
-- *Confirmed dates only* and *Watchlist only*.
+- *Index* (e.g. only S&P 500 members), *Confirmed dates only* and *Watchlist only*.
 
 ### Screener tab
-Laid out like the screener you're used to, with Descriptive and Statistics filters. Active filters are outlined in orange. You can also:
+Laid out like the screener you're used to, with Descriptive and Statistics filters. These include **Index** (e.g. only Nasdaq-100 members, "in any index" or "not in any index") and **Exchange** (Nasdaq / NYSE). An **Indexes** column shows each stock's memberships. Active filters are outlined in orange. You can also:
 - Search by ticker or company name; tick *Best timeframe per stock only*.
 - Use **saved filters**, including built-in presets: *Pre-earnings run-up candidates*, *Actionable this week* and *High-confidence (low luck)*.
 - Click a column header to sort. **Right-click a header** to show or hide columns, such as Abs Low/High, p-value, Short Score and Implied/Hist.
@@ -58,13 +58,18 @@ Every timeframe for one stock, plus:
 - **Earnings history**: date, before/after market, EPS estimate/actual/surprise, 5-day run-up, gap, open→close, day move and 5-day drift.
 
 ### Backtest tab
-Pick timeframes and rules (minimum score, minimum prior events, lookback, long or short, costs). Each past report is **re-scored using only reports that had already closed before entry**. Results compare *Selected by rules* against *Every event*, and include:
+Pick timeframes, the stocks to include (all, watchlist, or one index's members) and rules (minimum score, minimum prior events, lookback, long or short, costs). Each past report is **re-scored using only reports that had already closed before entry**. Results compare *Selected by rules* against *Every event*, and include:
 - An equity curve.
 - A **Score Calibration** chart: if higher score buckets don't show better future returns, don't trust the scores.
 - A by-year table and the full trade list (exportable).
 
 ### Toolbar
-- **Universe…**: the built-in list of about 260 liquid, optionable stocks, the S&P 500 (downloaded from Wikipedia), or your own list (paste or import a .txt/.csv). Your watchlist is always included.
+- **Universe…**: tick any combination of lists to analyze. Overlaps are counted once, and your watchlist is always included.
+  - The built-in list of about 260 liquid, optionable stocks
+  - **S&P 500**, **Nasdaq-100**, **Dow 30**, **S&P MidCap 400**, **S&P SmallCap 600**, **Russell 1000**, **Russell 2000**
+  - Your own list (paste or import a .txt/.csv)
+
+  The dialog shows each index list's size, source and date, and estimates the total number of stocks.
 - **Custom Timeframes…**: build your own buy and sell rules.
 - **Settings…**: years of history (default 10), minimum events for a rating, round-trip trading cost (default 10 bps), opportunity horizon, refresh age, parallel downloads, benchmark, **option data** (option volume and implied earnings move, slower), and an optional **Alpha Vantage** key.
 - **Export…**: saves the current table to Excel or CSV.
@@ -111,6 +116,7 @@ With fewer than 12 events, the score is pulled toward 50. Ratings: **Strong Buy 
 - **Yahoo Finance** via [`yfinance`](https://github.com/ranaroussi/yfinance): split- and dividend-adjusted daily prices, earnings dates with report time and EPS, next earnings date, market cap, and options. It's free and needs no key, but it is unofficial. If downloads start failing after Yahoo changes something, run `run.bat --update` to upgrade yfinance.
 - Yahoo returns up to about 100 past report dates per stock, which is plenty for the default 10 years.
 - **Confirmed?** is a heuristic: Yahoo shows a single date when a report date is confirmed and a date range when it's estimated.
+- **Index constituents** come from Wikipedia tables, iShares ETF holdings files (IVV, IJH, IJR, IWB, IWM) and Nasdaq.com. Each index has a fallback source where one exists, and each download is checked against the index's expected size. Lists are cached, refreshed every 30 days on **Update Data** (or on demand with *Refresh index lists now*), and failed downloads are retried at most once a day. Index membership reflects *today's* constituents, not historical ones.
 - **Alpha Vantage** (optional free key) is only used as a fallback when Yahoo has fewer than 4 earnings dates for a stock. The free tier allows about 25 calls per day.
 - Daily data only, so intraday entries are limited to open and close. Survivorship bias applies: the universe is today's stocks.
 - All data is cached in `%APPDATA%\EarningsScreener\cache.sqlite`, so the app works offline after the first download. Settings, watchlist and saved filters live in `settings.json` in the same folder, and errors go to `app.log`.

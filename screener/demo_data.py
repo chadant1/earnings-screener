@@ -29,6 +29,27 @@ def _ohlc(close: np.ndarray, gaps: np.ndarray, rng) -> pd.DataFrame:
     return pd.DataFrame({"Open": open_, "High": hi, "Low": lo, "Close": close, "Volume": vol})
 
 
+def demo_memberships(n_tickers: int = 40) -> dict[str, list[str]]:
+    """Fake index membership so the Index filter can be tried in demo mode."""
+    out = {}
+    for k in range(n_tickers):
+        m = []
+        if k < 20:
+            m.append("S&P 500")
+        if k % 3 == 0:
+            m.append("Nasdaq-100")
+        if k < 5:
+            m.append("Dow 30")
+        if 20 <= k < 30:
+            m.append("S&P 400")
+        if k < 30:
+            m.append("Russell 1000")
+        if k >= 30:
+            m += ["S&P 600", "Russell 2000"]
+        out[f"DEMO{k:02d}"] = m
+    return out
+
+
 def make_demo(n_tickers: int = 30, years: int = 11, seed: int = 7, today: dt.date | None = None):
     rng = np.random.default_rng(seed)
     today = today or dt.date.today()
@@ -83,6 +104,7 @@ def make_demo(n_tickers: int = 30, years: int = 11, seed: int = 7, today: dt.dat
             "next_earnings": nxt.isoformat(), "next_confirmed": bool(rng.random() > 0.3),
             "next_timing": timing, "option_volume": float(rng.integers(1, 200) * 1000),
             "implied_move": float(abs(rng.normal(0.06, 0.02))),
+            "exchange": "Nasdaq" if k % 3 == 0 else "NYSE",
         }
         out.append(TickerData(tkr, px, earn, meta))
     return out, spy

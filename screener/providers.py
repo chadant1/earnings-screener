@@ -17,6 +17,10 @@ log = logging.getLogger(__name__)
 
 EARN_COLS = ["date", "timing", "eps_est", "eps_act", "surprise"]
 
+# Yahoo exchange codes -> friendly names
+EXCHANGES = {"NMS": "Nasdaq", "NGM": "Nasdaq", "NCM": "Nasdaq", "NAS": "Nasdaq", "NYQ": "NYSE", "NYS": "NYSE",
+             "ASE": "NYSE American", "AMX": "NYSE American", "PCX": "NYSE Arca", "BTS": "Cboe", "BATS": "Cboe"}
+
 
 def _retry(fn, tries: int = 3, wait: float = 2.0):
     last = None
@@ -167,6 +171,8 @@ def fetch_ticker(symbol: str, years: int = 10, av_key: str = "", fetch_options: 
         meta["name"] = info.get("shortName") or info.get("longName") or symbol
         meta["sector"] = info.get("sector") or ""
         meta["industry"] = info.get("industry") or ""
+        ex = info.get("exchange") or ""
+        meta["exchange"] = EXCHANGES.get(ex, info.get("fullExchangeName") or ex)
         meta.setdefault("market_cap", _num(info.get("marketCap")))
         if not meta.get("market_cap"):
             meta["market_cap"] = _num(info.get("marketCap"))

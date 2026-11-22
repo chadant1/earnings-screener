@@ -409,7 +409,7 @@ def analyze_ticker(td: TickerData, windows: list[Window], bench: pd.DataFrame | 
 
     common = {
         "name": meta.get("name", td.ticker), "sector": meta.get("sector", ""),
-        "industry": meta.get("industry", ""),
+        "industry": meta.get("industry", ""), "exchange": meta.get("exchange", ""),
         "market_cap": meta.get("market_cap"), "avg_volume": meta.get("avg_volume"),
         "last_price": meta.get("last_price") or (float(prices["Close"].iloc[-1]) if len(prices) else np.nan),
         "option_volume": meta.get("option_volume"), "implied_move": meta.get("implied_move"),

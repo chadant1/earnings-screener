@@ -1,6 +1,8 @@
 """Filter panel (modelled on classic screener layouts) + saved filters."""
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QInputDialog, QLabel,
@@ -20,6 +22,9 @@ SPECS = [
         ("Mega (over $200B)", ">=", 200e9), ("Large (over $10B)", ">=", 10e9), ("Over $2 Billion", ">=", 2e9),
         ("Over $1 Billion", ">=", 1e9), ("Over $300 Million", ">=", 3e8), ("Small (under $2B)", "<", 2e9))),
     ("sector", "Sector", "D", "sector", _opts()),
+    ("index", "Index", "D", "indexes", _opts()),
+    ("exchange", "Exchange", "D", "exchange", _opts(
+        ("Nasdaq", "==", "Nasdaq"), ("NYSE", "==", "NYSE"), ("NYSE American / Arca / other", "notin", ["Nasdaq", "NYSE"]))),
     ("timeframe", "Timeframe", "D", "window", _opts()),
     ("earn_date", "Earnings Date", "D", "days_to_earnings", _opts(
         ("Next 7 days", "between", (0, 7)), ("Next 14 days", "between", (0, 14)),
@@ -103,6 +108,13 @@ def apply_rule(df: pd.DataFrame, col: str | None, op: str, val, watchlist: set) 
         return df[(s >= lo) & (s <= hi)]
     if op == "notna":
         return df[s.notna()]
+    if op == "member":   # value is one name inside a " · "-separated list
+        pat = r"(?:^| · )" + re.escape(val) + r"(?:$| · )"
+        return df[s.fillna("").astype(str).str.contains(pat, regex=True)]
+    if op == "nonempty":
+        return df[s.fillna("").astype(str).str.len() > 0]
+    if op == "empty":
+        return df[s.fillna("").astype(str).str.len() == 0]
     return df
 
 
@@ -219,7 +231,7 @@ class FilterPanel(QWidget):
         self.settings["saved_filters"] = sf
         self._refresh_saved()
 
-    def set_choices(self, sectors: list[str], windows: list[tuple[str, str]]):
+    def set_choices(self, sectors: list[str], windows: list[tuple[str, str]], indexes: list[str] | None = None):
         """Populate data-driven options (sectors and timeframes)."""
         def fill(key, items):
             cb = self.combos[key]
@@ -233,6 +245,10 @@ class FilterPanel(QWidget):
             cb.setCurrentIndex(max(i, 0))
             cb.blockSignals(False)
         fill("sector", [(s, "==", s) for s in sorted(set(sectors)) if s])
+        idx_items = [(i, "member", i) for i in (indexes or [])]
+        if idx_items:
+            idx_items += [("In any of these indexes", "nonempty", None), ("Not in any index", "empty", None)]
+        fill("index", idx_items)
         groups = []
         for g, lbl in (("Before", "All 'Before' timeframes"), ("Earnings", "All earnings-day timeframes"),
                        ("Hold Through", "All hold-through timeframes"), ("After", "All 'After' timeframes"),

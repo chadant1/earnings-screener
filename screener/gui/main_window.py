@@ -17,7 +17,9 @@ from . import workers
 from .backtest_tab import BacktestTab
 from .columns import C, OPPORTUNITY_COLS, SCREENER_COLS
 from .detail_tab import DetailTab, make_table
-from .dialogs import CustomWindowsDialog, SettingsDialog, UniverseDialog, resolve_universe
+from ..demo_data import demo_memberships
+from ..universe import INDEXES, memberships, resolve_universe
+from .dialogs import CustomWindowsDialog, SettingsDialog, UniverseDialog
 from .filters import FilterPanel
 from . import themes
 from .table_model import DataFrameModel
@@ -52,6 +54,8 @@ class MainWindow(QMainWindow):
         self.store = DataStore()
         self.results: dict = {}
         self.screen = pd.DataFrame()
+        self.memberships: dict = {}
+        self.index_names: list = []
         self.windows = all_windows(self.settings["custom_windows"])
         self._theme_busy = False
         themes.apply(QApplication.instance(), self.settings["theme"])
@@ -163,6 +167,13 @@ class MainWindow(QMainWindow):
         self.opp_hold = QCheckBox("Include hold-through-earnings timeframes")
         self.opp_best = QCheckBox("Best timeframe per stock")
         self.opp_best.setChecked(True)
+        ctl.addWidget(QLabel("Index"))
+        self.opp_index = QComboBox()
+        self.opp_index.addItem("All stocks")
+        self.opp_index.setMinimumWidth(130)
+        self.opp_index.currentIndexChanged.connect(self._refresh_opportunities)
+        ctl.addWidget(self.opp_index)
+        ctl.addSpacing(12)
         self.opp_watch = QCheckBox("Watchlist only")
         self.opp_confirmed = QCheckBox("Confirmed dates only")
         for w in (self.opp_hold, self.opp_best, self.opp_watch, self.opp_confirmed):
@@ -223,7 +234,7 @@ class MainWindow(QMainWindow):
     def _on_progress(self, i, n, msg):
         self.prog.setRange(0, n)
         self.prog.setValue(i)
-        self.prog.setFormat(f"{i}/{n}")
+        self.prog.setFormat(f"{i}/{n}" if n else "")
         self.prog_lbl.setText(msg)
 
     def _on_fail(self, tb):
@@ -240,9 +251,8 @@ class MainWindow(QMainWindow):
     def _start_download(self, force: bool):
         if self._thread is not None:
             return
-        tickers = resolve_universe(self.settings)
-        self._busy(True, f"Downloading {len(tickers)} stocks…")
-        self._launch(workers.DownloadWorker(self.store, tickers, self.settings, force), self._download_done)
+        self._busy(True, f"Downloading {len(resolve_universe(self.settings)):,} stocks…")
+        self._launch(workers.DownloadWorker(self.store, None, self.settings, force), self._download_done)
 
     def _launch(self, worker, done, progress=True):
         self._worker = worker
@@ -256,6 +266,7 @@ class MainWindow(QMainWindow):
 
     def _download_done(self, info):
         self._busy(False)
+        self.settings.save()  # persists refreshed index lists
         self._last_errors = info.get("errors", {})
         # chain analysis once the download thread has fully stopped
         from PySide6.QtCore import QTimer
@@ -293,9 +304,17 @@ class MainWindow(QMainWindow):
             screen["window_desc"] = screen["window_key"].map(lambda k: wmap[k].describe() if k in wmap else "")
             screen["plan"] = [self._plan(wmap.get(k), e, x) for k, e, x in
                               zip(screen["window_key"], screen.get("entry_date", pd.NaT), screen.get("exit_date", pd.NaT))]
+        mem = demo_memberships() if self.demo else memberships(self.settings)
+        if len(screen):
+            screen["indexes"] = screen["ticker"].map(lambda t: " · ".join(mem.get(t, [])))
         self.screen = screen
+        self.memberships = mem
+        present = {n for v in mem.values() for n in v}
+        self.index_names = [i.short for i in INDEXES if i.short in present]
         sectors = screen["sector"].dropna().unique().tolist() if len(screen) else []
-        self.filters.set_choices(sectors, [(w.label, w.group) for w in self.windows])
+        self.filters.set_choices(sectors, [(w.label, w.group) for w in self.windows], self.index_names)
+        self._fill_index_combo(self.opp_index, "All stocks")
+        self.backtest.set_index_choices(self.index_names, mem)
         self._refresh_all_views()
         self.detail.set_data(self.results, self.screen)
         n_err = len(self._last_errors)
@@ -347,6 +366,9 @@ class MainWindow(QMainWindow):
             m &= df["window_key"].map(lambda k: k in wmap and (wmap[k].entry_anchor == "pre")).astype(bool)
         if self.opp_watch.isChecked():
             m &= df["ticker"].isin(self.settings["watchlist"])
+        if self.opp_index.currentIndex() > 0 and "indexes" in df:
+            name = self.opp_index.currentText()
+            m &= df["indexes"].fillna("").str.split(" · ").apply(lambda xs: name in xs)
         if self.opp_confirmed.isChecked():
             m &= df["confirmed"] == True  # noqa: E712
         out = df[m].sort_values("score", ascending=False)
@@ -356,6 +378,16 @@ class MainWindow(QMainWindow):
         self.opp_model.set_df(out)
         self.opp_count.setText(f"{len(out)} setups · {out['ticker'].nunique() if len(out) else 0} stocks")
         self._autosize(self.opp_view)
+
+    def _fill_index_combo(self, combo, first: str):
+        cur = combo.currentText()
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem(first)
+        combo.addItems(self.index_names)
+        i = combo.findText(cur)
+        combo.setCurrentIndex(max(0, i))
+        combo.blockSignals(False)
 
     @staticmethod
     def _autosize(view):
