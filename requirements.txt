@@ -1,0 +1,10 @@
+PySide6>=6.6
+pandas>=2.0
+numpy>=1.24
+scipy>=1.10
+matplotlib>=3.7
+yfinance>=0.2.66
+requests>=2.31
+lxml>=4.9
+beautifulsoup4>=4.12
+openpyxl>=3.1
